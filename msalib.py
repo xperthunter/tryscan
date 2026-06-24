@@ -147,10 +147,11 @@ class MSA:
 	Contains method to score agreement between mutual information and representative structures
 	from a a family.
 	"""
-	def __init__(self, lines):
+	def __init__(self, lines, aln=None):
 		"""
 		Initialize a MSA object from an alignment in stockholm format
 		"""
+		
 		self.identifier = None # release identifier
 		self.accession = None  # stable identifier
 		self.description = []  # to be joined later
@@ -196,13 +197,45 @@ class MSA:
 				else: sys.exit('unrecognized line')
 			else:
 				lid, seq = line.split()
-				self.seqs.append(seq.upper())
-
+				entry = ""
+				for c in seq:
+					if c == '.' or c == '-': continue
+					elif not c.isupper(): continue
+					else:
+						entry += c
+				
+				if len(entry) == 0:
+					self.seqs.append("")
+				else:
+					self.seqs.append(seq.upper())
+		
+		
+		self.uids = [uid for k, uid in enumerate(self.uids) if len(self.seqs[k]) != 0]
+		self.lids = [lid for k, lid in enumerate(self.lids) if len(self.seqs[k]) != 0]
+		self.sub_seqs = [sub for k, sub in enumerate(self.sub_seqs) if len(self.seqs[k]) != 0]
+		self.lens = [ll for k, ll in enumerate(self.lens) if len(self.seqs[k]) != 0]
+		self.seqs = [seq for k, seq in enumerate(self.seqs) if len(self.seqs[k]) != 0]
+		
+		#self.seqs = [[s for i,elm in enumerate(s) if self.cons[i] != '.'] for s in self.seqs]
+		
 		self.description = ' '.join(self.description)
 		self.length = len(self.seqs[0])
 		self.depth = len(self.seqs)
 		
+		assert(len(self.cons) == self.length)
+		
+		cons_index = dict()
+		counter = 0
+		for i,elm in enumerate(self.cons):
+			if elm == '.' or elm == '-': continue
+			cons_index[i] = counter
+			counter += 1
+		
+	#	print(json.dumps(cons_index,indent=2))
+		#sys.exit()
+		
 		for k, (ends, lid, uid, seq) in enumerate(zip(self.sub_seqs, self.lids, self.uids, self.seqs)):
+			
 			self.uid_index[uid] = k
 			self.lid_index[lid] = k
 
@@ -212,9 +245,18 @@ class MSA:
 			self.resindices[k] = dict()
 			for i, sym in enumerate(seq):
 				if sym.upper() not in AA: continue
-
+				#if self.cons[i] == '.': continue
+				
 				j += 1
-				self.resindices[k][i] = beg + j - 1
+				if i in cons_index:
+					self.resindices[k][cons_index[i]] = beg + j - 1
+		
+		self.seqs = [''.join([elm for i,elm in enumerate(s) if self.cons[i] != '.' and self.cons[i] != '-']) for s in self.seqs]
+		#print(self.seqs[0])
+		#print(len(self.seqs[0]))
+		#print(len(list(cons_index.keys())))
+		assert(len(self.seqs[0]) == len(list(cons_index.keys())))
+		self.length = len(self.seqs[0])
 		
 		q = [
 			'A','C','D','E','F',
@@ -348,7 +390,7 @@ class MSA:
 		fi = dict()
 		
 		for i in range(self.length):
-			if self.cons[i] == '.': continue
+			#if self.cons[i] == '.': continue
 			
 			if self.rescale:
 				fi[i] = dict()
@@ -445,9 +487,9 @@ class MSA:
 			rpcs = self._rescaled_counts()
 		
 		for i in range(self.length):
-			if self.cons[i] == '.': continue
-			for j in range(i+1, self.length):
-				if self.cons[j] == '.': continue
+			#if self.cons[i] == '.': continue
+			for j in range(i+5, self.length):
+				#if self.cons[j] == '.': continue
 				
 				if self.rescale:
 					fij[(i,j)] = dict()
@@ -518,6 +560,8 @@ class MSA:
 		
 		self._seq_cluster()
 		self.set_neff()
+		
+		self.psuedo = len(self.q) / self.neff
 		
 		self._pcs = self.psuedo * self.neff
 		
@@ -606,23 +650,31 @@ class MSA:
 		scores = {}
 		cumulative_scores = {}
 		measures = 0
+		#print(f"test_id {self.test_id}")
+		#print(f"test index {self.test_index}")
+		#print(json.dumps(self.resindices[self.test_index],indent=2))
+		skips = 0
 		for rank, (k,v) in enumerate(sorted(self.mij.items(), key = lambda x: x[1], reverse=True)):
-			l = (
-				self.resindices[self.test_index][int(k[0])],
-				self.resindices[self.test_index][int(k[1])]
+			try:
+				l = (
+					self.resindices[self.test_index][int(k[0])],
+					self.resindices[self.test_index][int(k[1])]
 				)
+			except:
+				skips += 1
+				continue
 			
 			contact = self._test_contact(k, l)
 			if contact is not None:
 				if contact:
-					scores[rank] = 1
+					scores[rank-skips] = 1
 				else:
-					scores[rank] = 0
+					scores[rank-skips] = 0
 			
-			if rank == 0:
-				cumulative_scores[rank] = scores[rank]
+			if rank-skips == 0:
+				cumulative_scores[rank-skips] = scores[rank-skips]
 			else:
-				cumulative_scores[rank] = scores[rank] + cumulative_scores[rank-1]
+				cumulative_scores[rank-skips] = scores[rank-skips] + cumulative_scores[rank-skips-1]
 		
 		self.scores = scores
 		self.cumulative_scores = cumulative_scores
