@@ -519,6 +519,30 @@ class MSA:
 		return
 	
 	
+	def _set_fijk(self):
+		"""
+		compute three point correlations
+		"""
+
+		for i in range(self.length):
+			col_i = self.column(i)
+			for j in range(i+1, self.length):
+				col_j = self.column(j)
+				for k in range(max(i+5, j+1), self.length):
+					col_k = self.column(k)
+					for n, (ei, ej, ek) in enumerate(zip(col_i, col_j, col_k)):
+						if ei == '-': ei = '.'
+						if ej == '-': ej = '.'
+						if ek == '-': ek = '.'
+
+						if ei not in self.q or ej not in self.q or ek not in self.q: continue
+
+						if self.rescale:
+							if (ei,ej,ek) not in fijk[(i,j,k)]
+
+
+
+
 	def measure_mij(self, similarity_cutoff=0.8, psuedo=1.0, rescale=False):
 		"""
 		measure mutual information for pairs of columns
